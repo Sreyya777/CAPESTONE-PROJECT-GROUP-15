@@ -1,0 +1,187 @@
+#define BLYNK_TEMPLATE_ID "TMPL3GLjBYL8Y"
+#define BLYNK_TEMPLATE_NAME "agribot"
+#define BLYNK_AUTH_TOKEN "zWEBX0snvhifVU4al0VV3xVy9SF2qj3N"
+#define BLYNK_PRINT Serial
+
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <BlynkSimpleEsp32.h>
+#include <ESP32Servo.h>
+#include <DHT.h>
+#include <Adafruit_BMP085.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+// Blynk credentials
+char auth[] = BLYNK_AUTH_TOKEN; 
+char ssid[] = "kpi";
+char pass[] = "12345678";
+
+// DHT11 and BMP180 setup
+#define DHTPIN 14       // DHT11 connected to GPIO 14
+#define DHTTYPE DHT11   // DHT11 sensor type
+DHT dht(DHTPIN, DHTTYPE);
+Adafruit_BMP085 bmp;
+
+// Virtual pins for Blynk
+#define VIRTUAL_PIN_TEMP_DHT V1 // DHT11 temperature
+#define VIRTUAL_PIN_SOIL V2     // Soil moisture status
+#define VIRTUAL_PIN_PRESSURE V0
+// Hardware pins for motors (shorted pairs)
+int left_fw = 32;  // Left side forward
+int left_bw = 33;  // Left side backward
+int right_fw = 25; // Right side forward
+int right_bw = 26; // Right side backward
+int cut = 15;
+
+#define soilPin 18 
+#define pump 19
+
+Servo myServo1;
+Servo myServo2;
+
+BlynkTimer timer;
+
+// LCD setup (I2C address may vary, commonly it's 0x27)
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+void setup() {
+  Serial.begin(115200);
+  WiFi.begin(ssid, pass);
+
+  // WiFi connection setup
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("WiFi connected");
+  Blynk.begin(auth, ssid, pass, "blynk.cloud", 80);
+
+  // Initialize hardware
+  pinMode(left_fw, OUTPUT);
+  pinMode(left_bw, OUTPUT);
+  pinMode(right_fw, OUTPUT);
+  pinMode(right_bw, OUTPUT);
+  pinMode(cut, OUTPUT);
+  pinMode(soilPin, INPUT);
+  pinMode(pump, OUTPUT);
+  digitalWrite(pump, LOW); // Turn off pump initially
+
+  myServo1.attach(2);
+  myServo2.attach(4);
+
+  // Initialize sensors
+  dht.begin();
+  if (!bmp.begin()) {
+    Serial.println("Could not find a valid BMP180 sensor, check wiring!");
+    while (1);
+  }
+
+  // Initialize LCD
+  lcd.begin();
+  lcd.backlight();  // Turn on the backlight
+
+  // Set a timer to read and send sensor data every 5 seconds
+  timer.setInterval(5000L, readAndSendSensorData);
+}
+
+void loop() {
+  Blynk.run();
+  timer.run();
+}
+
+// Function to read and send sensor data to Blynk
+void readAndSendSensorData() {
+  // DHT11 sensor readings
+  float dhtTemperature = dht.readTemperature();
+
+  // BMP180 sensor readings
+  float bmpTemperature = bmp.readTemperature();
+  float pressure = bmp.readPressure() / 100.0F; // Pressure in hPa
+
+  // Soil moisture sensor
+  int soilMoisture = digitalRead(soilPin);
+  String soilStatus = soilMoisture == 0 ? "Soil Dry" : "Soil Wet";
+
+  // Control pump based on soil status
+  if (soilMoisture == 0) {  // If soil is dry
+    digitalWrite(pump, HIGH);  // Turn ON the pump
+  } else {
+    digitalWrite(pump, LOW);  // Turn OFF the pump
+  }
+
+  // Check for valid DHT11 readings and send data to Blynk
+  if (!isnan(dhtTemperature)) {
+    Blynk.virtualWrite(VIRTUAL_PIN_TEMP_DHT, dhtTemperature);
+    Serial.print("DHT11 Temperature: ");
+    Serial.print(dhtTemperature);
+    Serial.println(" °C");
+  } else {
+    Serial.println("Failed to read from DHT11 sensor!");
+  }
+
+  // Display BMP180 data in the serial monitor
+  Serial.print("BMP180 Temperature: ");
+  Serial.print(bmpTemperature);
+  Serial.println(" °C");
+  Blynk.virtualWrite(VIRTUAL_PIN_PRESSURE, pressure);
+  Serial.print("BMP180 Pressure: ");
+  Serial.print(pressure);
+  Serial.println(" hPa");
+
+  // Send soil moisture status to Blynk and display in Serial Monitor
+  Blynk.virtualWrite(VIRTUAL_PIN_SOIL, soilStatus);
+  Serial.print("Soil Moisture: ");
+  Serial.println(soilStatus);
+
+  // Display temperature and pressure and crop recommendations on LCD
+  displayCropRecommendations(dhtTemperature, pressure);
+}
+
+// Function to display crop recommendations based on temperature and pressure
+void displayCropRecommendations(float temperature, float pressure) {
+  lcd.clear();
+  lcd.setCursor(0, 0);  // Set the cursor to the first line
+  lcd.print("Temp: ");
+  lcd.print(temperature);
+  lcd.print(" C");
+
+  lcd.setCursor(0, 1);  // Set the cursor to the second line
+  if (temperature < 15) {
+    lcd.print("Crops: Wheat");
+  } else if (temperature >= 15 && temperature < 25) {
+    if (pressure < 1000) {
+      lcd.print("Crops: Maize");
+    } else {
+      lcd.print("Crops: Beans");
+    }
+  } else if (temperature >= 25 && temperature < 35) {
+    if (pressure < 1015) {
+      lcd.print("Crops: Tomatoes");
+    } else {
+      lcd.print("Crops: Peppers");
+    }
+  } else {
+    lcd.print("Crops: Rice");
+  }
+}
+
+// Blynk control for Servo 1 (V7)
+BLYNK_WRITE(V7) {
+  int pinstate = param.asInt();
+  if (pinstate == 0) {
+    myServo1.write(150);  // Set servo 1 to position 150
+  } else {
+    myServo1.write(0);  // Set servo 1 to position 0
+  }
+}
+
+// Blynk control for Servo 2 (V8)
+BLYNK_WRITE(V8) {
+  int pinstate = param.asInt();
+  if (pinstate == 0) {
+    myServo2.write(90);  // Set servo 2 to position 90
+  } else {
+    myServo2.write(0);  // Set servo 2 to position 0
+  }
+}
