@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Crop Yield Prediction</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        input, select {
+            padding: 5px;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f0f0f0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Crop Yield Prediction</h1>
+    <form method="POST">
+        <select name="crop" required>
+            <option value="">Select Crop</option>
+            {% for crop in valid_crops %}
+            <option value="{{ crop }}">{{ crop }}</option>
+            {% endfor %}
+        </select>
+        <input type="number" step="0.01" name="nitrogen" placeholder="Nitrogen (N)" required>
+        <input type="number" step="0.01" name="phosphorus" placeholder="Phosphorus (P)" required>
+        <input type="number" step="0.01" name="potassium" placeholder="Potassium (K)" required>
+        <input type="number" step="0.01" name="temperature" placeholder="Temperature" required>
+        <input type="number" step="0.01" name="humidity" placeholder="Humidity" required>
+        <input type="number" step="0.01" name="ph" placeholder="pH Value" required>
+        <input type="number" step="0.01" name="rainfall" placeholder="Rainfall" required>
+        <input type="submit" value="Predict Yield">
+    </form>
+
+    {% if prediction %}
+    <div class="result">
+        <h2>Predicted Yield: {{ prediction }}</h2>
+    </div>
+    {% endif %}
+
+    <p><a href="/">Back to Home</a></p>
+</body>
+</html>
